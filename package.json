@@ -1,0 +1,28 @@
+{
+  "name": "konekuta",
+  "version": "0.1.0",
+  "description": "A highly-opiniated framework to build interactive, multi-tenant applications on top of mbed Device Connector",
+  "main": "konekuta.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ARMmbed/konekuta.git"
+  },
+  "keywords": [
+    "mbed",
+    "connector"
+  ],
+  "author": "Jan Jongboom <jan.jongboom@arm.com>",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/ARMmbed/konekuta/issues"
+  },
+  "homepage": "https://github.com/ARMmbed/konekuta#readme",
+  "dependencies": {
+    "co": "^4.6.0",
+    "es6-promisify": "^4.1.0",
+    "mbed-connector-api": "git://github.com/ARMmbed/mbed-connector-api-node.git#63938afe1dbb4127e847d47007f8311b8bc3e06f"
+  }
+}
