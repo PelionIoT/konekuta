@@ -14,8 +14,7 @@ module.exports = function(options, callback) {
 
   options.token = process.env.TOKEN || options.token;
   if (!options.token || options.token === 'YOUR_ACCESS_TOKEN') {
-    console.error('Please set your access token first! (via TOKEN=xxx node main.js, or by pasting it in main.js)');
-    process.exit(1);
+    return callback('Please set your access token first!');
   }
 
   assert(options.io, 'Need to pass in socket.io instance under options.io');
@@ -139,8 +138,7 @@ module.exports = function(options, callback) {
   // Start notification channel
   api.startLongPolling(co.wrap(function*(err) {
     if (err) {
-      console.error('Connection to mbed Cloud failed', err);
-      process.exit(1);
+      return callback('Connection to mbed Cloud failed ' + err);
     }
 
     console.log('Retrieving initial device model...');
@@ -161,7 +159,7 @@ module.exports = function(options, callback) {
 
     console.log('Retrieved %d devices on startup', devices.length, devices);
 
-    callback(null, devices, ee);
+    callback(null, devices, ee, api);
   }));
 
   // Notifications
@@ -210,8 +208,8 @@ module.exports = function(options, callback) {
 
     options.io.sockets.emit('created-device', options.mapToView(data));
   }));
-
-  api.on('de-registration', registration => {
+  
+  function deregister(registration) {
     if (registration.ept !== options.endpointType) return;
 
     let device = devices.filter(d => d.endpoint === registration.ep)[0];
@@ -222,10 +220,10 @@ module.exports = function(options, callback) {
 
     console.log('de-registered', registration);
     options.io.sockets.emit('removed-device', registration.ep);
-  });
+  }
 
-  api.on('registration-expired', registration => {
-    console.log('registration-expired happened', registration);
-  });
+  api.on('de-registration', deregister);
+
+  api.on('registration-expired', deregister);
 
 };
