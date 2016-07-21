@@ -17,6 +17,8 @@ Konekuta handles this by:
 
 The framework is not flexible. It makes a bunch of assumptions on your environment and usage which might not fit you. This is by design. If your usecase does not fit Konekuta, use the [mbed Connector node.js library](https://github.com/ARMmbed/mbed-connector-api-node) instead.
 
+An example application is available here: [ARMmbed/connected-lights](https://github.com/ARMmbed/connected-lights/tree/master/webapp).
+
 ## Usage
 
 First add both Konekuta and socket.io to your application:
