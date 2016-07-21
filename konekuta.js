@@ -30,6 +30,17 @@ module.exports = function(options, callback) {
   options.retrieve = options.retrieve || {};
   options.updates = options.updates || {};
 
+  for (let updateKey of Object.keys(options.updates)) {
+    let o = options.updates[updateKey];
+    if (typeof o !== 'object') return callback(`options.updates.${updateKey} should be an object`);
+    if (['put', 'post'].indexOf(o.method) === -1) {
+      return callback(`options.updates.${updateKey}.method should be 'put' or 'post'`);
+    }
+    if (!o.path) {
+      return callback(`options.updates.${updateKey}.path is missing`);
+    }
+  }
+
   // This is the truth. This is where we keep state of all connected devices.
   var devices = [];
 
@@ -111,23 +122,25 @@ module.exports = function(options, callback) {
     for (let name of Object.keys(options.updates)) {
 
       socket.on('change-' + name, co.wrap(function*(endpoint, newvalue, callback) {
-        console.log('change-' + name, endpoint, newvalue);
+        options.verbose && console.log('change-' + name, endpoint, newvalue);
         try {
           var device = devices.filter(d => d.endpoint === endpoint)[0];
           if (!device) throw 'Could not find device with endpoint ' + endpoint;
 
           if (!options.dontUpdate) {
-            let method = options.updates[name].method + 'Resource';
+            let method = options.updates[name].method === 'put' ?
+              'putResourceValue' :
+              'postResource';
             yield promisify(api[method].bind(api))(endpoint, options.updates[name].path, newvalue.toString());
           }
 
-          console.log(`change-${name} OK`, endpoint);
+          options.verbose && console.log(`change-${name} OK`, endpoint);
           device[name] = newvalue;
-          callback();
+          callback && callback();
         }
         catch (err) {
-          console.log(`change-${name} failed`, endpoint, err);
-          callback(err.toString());
+          options.verbose && console.log(`change-${name} failed`, endpoint, err);
+          callback && callback(err.toString());
         }
       }));
 
@@ -208,7 +221,7 @@ module.exports = function(options, callback) {
 
     options.io.sockets.emit('created-device', options.mapToView(data));
   }));
-  
+
   function deregister(registration) {
     if (registration.ept !== options.endpointType) return;
 
