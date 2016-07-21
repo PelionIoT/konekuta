@@ -229,11 +229,9 @@ module.exports = function(options, callback) {
   }));
 
   function deregister(registration) {
-    if (registration.ept !== options.endpointType) return;
-
     let device = devices.filter(d => d.endpoint === registration.ep)[0];
     if (!device) {
-      console.error('de-registration came in for non-existing device...', registration);
+      return options.verbose && console.log('de-registration came in for non-tracked device...', registration);
     }
     devices.splice(devices.indexOf(device), 1);
 
