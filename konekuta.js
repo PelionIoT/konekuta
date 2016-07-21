@@ -136,6 +136,12 @@ module.exports = function(options, callback) {
 
           options.verbose && console.log(`change-${name} OK`, endpoint);
           device[name] = newvalue;
+
+          // broadcast to other clients
+          if (!options.dontBroadcastLocalUpdates) {
+            socket.broadcast.emit(`change-${name}`, endpoint, newvalue);
+          }
+
           callback && callback();
         }
         catch (err) {
