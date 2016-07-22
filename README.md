@@ -54,7 +54,7 @@ You would map this in Konekuta like this:
     deviceName: '/device/0/name'
   },
   subscribe: {
-    buttonCount: '/device/0/name'
+    buttonCount: '/button/0/count'
   },
   updates: {
     blink: {
