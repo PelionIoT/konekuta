@@ -23,6 +23,8 @@ module.exports = function(options, callback) {
   assert.equal(typeof options.mapToView, 'function', 'Need to pass in options.mapToView');
   assert.equal(typeof callback, 'function', 'Need to pass in callback as second argument');
 
+  options.timeout = options.timeout || 10000;
+
   for (let prop of Object.keys(options.deviceModel)) {
     if (options.deviceModel[prop].subscribe === true) {
       options.deviceModel[prop].subscribe = options.deviceModel[prop].retrieve;
@@ -64,10 +66,12 @@ module.exports = function(options, callback) {
 
   // Subscribe to resources and get initial values for a device
   function getDeviceData(endpoint) {
-    return helpers.getResources(endpoint, subscribe, retrieve).catch(err => {
+    let s = Object.keys(subscribe).map(k => subscribe[k]);
+
+    return helpers.getResources(endpoint, s, retrieve, options.timeout).catch(err => {
       options.verbose && console.log('error when retrieving values for', endpoint, err);
       // don't throw, but rather capture the error...
-      return { err: err };
+      return { endpoint: endpoint, err: err };
     });
   }
 

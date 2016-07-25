@@ -125,6 +125,7 @@ There are some more optional options:
 | dontUpdate    | When you update a value from a client, do not actually update the value in Device Connector. Useful for debugging f.e. lights without constantly triggering the light. (default: false) |
 | fakeData      | If you provide an array of devices here, the array will be used, and Connector will be bypassed. Useful for debugging if you don't want to fiddle with actual devices. (default: null) |
 | dontBroadcastLocalUpdates | Usually updates are sent to other connected clients. If you already have subscriptions in place for all resources, you can just let Connector handle these notifications. (default: false) |
+| timeout | Sometimes resource values cannot be gotten immediately (device is hanging), this is the timeout for getting resource values (default: 10000 ms.) |
 
 ### Server-side events
 

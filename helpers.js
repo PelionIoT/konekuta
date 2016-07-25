@@ -10,35 +10,52 @@ function KonekutaHelpers(connector, options) {
   this.options = options;
 }
 
-KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resourceValues) {
+KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resourceValues, timeout) {
+  timeout = timeout || 10000;
+  
   let api = this.connector;
   let options = this.options;
 
-  return co.wrap(function*() {
-    // we need to run this in series...
-    let ret = {
-      endpoint: endpoint
-    };
+  return new Promise((res, rej) => {
+    var cancel = false;
 
-    // first subscribe
-    for (let path of subscriptions) {
-      yield promisify(api.putResourceSubscription.bind(api))(endpoint, path);
-      options.verbose && console.log('subscribed to', endpoint, path);
-    }
+    var to = setTimeout(() => {
+      cancel = true;
+      rej('Timeout when retrieving values');
+    }, timeout);
 
-    // then fix resources
-    for (let key of Object.keys(resourceValues)) {
-      ret[key] = yield promisify(api.getResourceValue.bind(api))(endpoint, resourceValues[key]);
-      options.verbose && console.log('got value', endpoint, key, resourceValues[key], '=', ret[key]);
-    }
+    co.wrap(function*() {
+      // we need to run this in series...
+      let ret = {
+        endpoint: endpoint
+      };
 
-    return ret;
-  })();
+      // first subscribe
+      for (let path of subscriptions) {
+        if (cancel) return;
+
+        yield promisify(api.putResourceSubscription.bind(api))(endpoint, path);
+        options.verbose && console.log('subscribed to', endpoint, path);
+      }
+
+      // then fix resources
+      for (let key of Object.keys(resourceValues)) {
+        if (cancel) return;
+
+        ret[key] = yield promisify(api.getResourceValue.bind(api))(endpoint, resourceValues[key]);
+        options.verbose && console.log('got value', endpoint, key, resourceValues[key], '=', ret[key]);
+      }
+
+      clearTimeout(to);
+
+      return ret;
+    })().then(res, rej);
+  });
 };
 
 // promisified version of api.getEndpoints
 KonekutaHelpers.prototype.getEndpoints = function(type) {
-let api = this.connector;
+  let api = this.connector;
 
   return new Promise((res, rej) => {
     api.getEndpoints((err, devices) => {
