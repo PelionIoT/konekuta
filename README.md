@@ -49,21 +49,21 @@ You would map this in Konekuta like this:
 
 ```js
 {
-  retrieve: {
-    buttonCount: '/button/0/count',
-    deviceName: '/device/0/name'
+  buttonCount: {
+    retrieve: '/button/0/count',
+    subscribe: true                 // pass in a string here to override (true copies over the value of retrieve)
   },
-  subscribe: {
-    buttonCount: '/button/0/count'
-  },
-  updates: {
-    blink: {
-      method: 'post',
-      path: '/led/0/blink'
-    },
-    deviceName: {
+  deviceName: {
+    retrieve: '/device/0/name',
+    update: {
       method: 'put',
       path: '/device/0/name'
+    }
+  },
+  blink: {
+    update: {
+      method: 'post',
+      path: '/led/0/blink'
     }
   }
 }
@@ -107,9 +107,7 @@ The options object looks like this:
   endpointType: 'MyAwesomeLight',
   token: 'Access token for Connector',
   io: io,           // socket.io instance
-  retrieve: {},     // see above
-  subscribe: {},    // see above
-  updates: {},      // see above
+  deviceModel: {},  // see above
   mapToView: function(device) {
     // This is a function which can map the device model (as declared above)
     // to a view model. The view model will be sent to the client when a device
@@ -127,6 +125,43 @@ There are some more optional options:
 | dontUpdate    | When you update a value from a client, do not actually update the value in Device Connector. Useful for debugging f.e. lights without constantly triggering the light. (default: false) |
 | fakeData      | If you provide an array of devices here, the array will be used, and Connector will be bypassed. Useful for debugging if you don't want to fiddle with actual devices. (default: null) |
 | dontBroadcastLocalUpdates | Usually updates are sent to other connected clients. If you already have subscriptions in place for all resources, you can just let Connector handle these notifications. (default: false) |
+| timeout | Sometimes resource values cannot be gotten immediately (device is hanging), this is the timeout for getting resource values (default: 10000 ms.) |
+
+### Server-side events
+
+The third argument in the callback is `ee`, which is an [EventEmitter](https://nodejs.org/api/events.html). It sends out the following events:
+
+```js
+ee.on('new-registration', function(registration) {
+  // new device was registered in mbed Cloud, but not loaded device model yet
+});
+
+ee.on('created-device', function(device) {
+  // device model was loaded for new device
+});
+
+ee.on('removed-device', function(endpoint) {
+  // device was de-registered from mbed Cloud
+});
+
+ee.on('create-device-error', function(endpoint, error) {
+  // loading device model for a newly registered device failed
+});
+
+ee.on('change', function(device, property, newValue, source) {
+  // property on a device was changed
+  // source is 'websocket' (changed by a client) or 'notification' (changed in mbed Cloud)
+});
+
+ee.on('change-*', function(device, newValue, source) {
+  // same as above, but replace * with a property name (e.g. 'change-status')
+});
+
+ee.on('devices-with-errors', function(devices) {
+  // emitted straight after creation of the EventEmitter,
+  // contains all devices for which loading the device model failed
+});
+```
 
 ## Setting up the client
 
