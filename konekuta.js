@@ -5,6 +5,7 @@ var promisify = require('es6-promisify');
 var co = require('co');
 var assert = require('assert');
 var EventEmitter = require('events');
+var KonekutaHelpers = require('./helpers');
 
 module.exports = function(options, callback) {
 
@@ -22,24 +23,35 @@ module.exports = function(options, callback) {
   assert.equal(typeof options.mapToView, 'function', 'Need to pass in options.mapToView');
   assert.equal(typeof callback, 'function', 'Need to pass in callback as second argument');
 
-  if (options.dontUpdate) {
-    console.log(`Starting in 'dont-update' mode, not syncing changes back to mbed Cloud`);
-  }
-
-  options.subscribe = options.subscribe || {};
-  options.retrieve = options.retrieve || {};
-  options.updates = options.updates || {};
-
-  for (let updateKey of Object.keys(options.updates)) {
-    let o = options.updates[updateKey];
-    if (typeof o !== 'object') return callback(`options.updates.${updateKey} should be an object`);
-    if (['put', 'post'].indexOf(o.method) === -1) {
-      return callback(`options.updates.${updateKey}.method should be 'put' or 'post'`);
+  for (let prop of Object.keys(options.deviceModel)) {
+    if (options.deviceModel[prop].subscribe === true) {
+      options.deviceModel[prop].subscribe = options.deviceModel[prop].retrieve;
     }
-    if (!o.path) {
-      return callback(`options.updates.${updateKey}.path is missing`);
+
+    let o = options.deviceModel[prop].update;
+    if (o) {
+      if (typeof o !== 'object') return callback(`options.deviceModel.${prop}.update should be an object`);
+      if (['put', 'post'].indexOf(o.method) === -1) {
+        return callback(`options.deviceModel.${prop}.update.method should be 'put' or 'post'`);
+      }
+      if (!o.path) {
+        return callback(`options.deviceModel.${prop}.update.path is missing`);
+      }
     }
   }
+
+  function getPropFromDeviceModel(prop) {
+    return Object.keys(options.deviceModel)
+    .filter(k => !!options.deviceModel[k][prop])
+    .reduce((curr, k) => {
+      curr[k] = options.deviceModel[k][prop];
+      return curr;
+    }, {});
+  }
+
+  let subscribe = getPropFromDeviceModel('subscribe');
+  let retrieve = getPropFromDeviceModel('retrieve');
+  let update = getPropFromDeviceModel('update');
 
   // This is the truth. This is where we keep state of all connected devices.
   var devices = [];
@@ -48,48 +60,11 @@ module.exports = function(options, callback) {
     accessKey: options.token
   });
 
-  function getResources(endpoint, subscriptions, resourceValues) {
-    return co.wrap(function*() {
-      // we need to run this in series...
-      let ret = {
-        endpoint: endpoint
-      };
-
-      // first subscribe
-      for (let path of subscriptions) {
-        yield promisify(api.putResourceSubscription.bind(api))(endpoint, path);
-        options.verbose && console.log('subscribed to', endpoint, path);
-      }
-
-      // then fix resources
-      for (let key of Object.keys(resourceValues)) {
-        ret[key] = yield promisify(api.getResourceValue.bind(api))(endpoint, resourceValues[key]);
-        options.verbose && console.log('got value', endpoint, key, resourceValues[key], '=', ret[key]);
-      }
-
-      return ret;
-    })();
-  }
-
-  // promisified version of api.getEndpoints
-  function getEndpoints(type) {
-    return new Promise((res, rej) => {
-      api.getEndpoints((err, devices) => {
-        if (err) return rej(err);
-        devices = devices.map(d => {
-          d.endpoint = d.name;
-          return d;
-        });
-        res(devices);
-      }, { parameters: { type: type } });
-    });
-  }
+  var helpers = new KonekutaHelpers(api, { verbose: options.verbose });
 
   // Subscribe to resources and get initial values for a device
   function getDeviceData(endpoint) {
-    let subscribe = Object.keys(options.subscribe).map(k => options.subscribe[k]);
-
-    return getResources(endpoint, subscribe, options.retrieve || {}).catch(err => {
+    return helpers.getResources(endpoint, subscribe, retrieve).catch(err => {
       options.verbose && console.log('error when retrieving values for', endpoint, err);
       // don't throw, but rather capture the error...
       return { err: err };
@@ -98,14 +73,13 @@ module.exports = function(options, callback) {
 
   // Gets the initial batch of devices...
   function* getDevices() {
-    let devices = yield getEndpoints(options.endpointType);
+    let devices = yield helpers.getEndpoints(options.endpointType);
 
     options.verbose && console.log('got devices', devices);
 
     let getDeviceDatas = devices.map(device => getDeviceData(device.endpoint));
 
     let data = yield Promise.all(getDeviceDatas);
-    options.verbose && console.log('errors:', data.filter(m => m.err));
 
     // so data is now an array with objects which contains { endpoint, status, intensity, ip }
     return data;
@@ -119,7 +93,7 @@ module.exports = function(options, callback) {
     });
     socket.emit('device-list', sync);
 
-    for (let name of Object.keys(options.updates)) {
+    for (let name of Object.keys(update)) {
 
       socket.on('change-' + name, co.wrap(function*(endpoint, newvalue, callback) {
         options.verbose && console.log('change-' + name, endpoint, newvalue);
@@ -128,10 +102,10 @@ module.exports = function(options, callback) {
           if (!device) throw 'Could not find device with endpoint ' + endpoint;
 
           if (!options.dontUpdate) {
-            let method = options.updates[name].method === 'put' ?
+            let method = update[name].method === 'put' ?
               'putResourceValue' :
               'postResource';
-            yield promisify(api[method].bind(api))(endpoint, options.updates[name].path, newvalue.toString());
+            yield promisify(api[method].bind(api))(endpoint, update[name].path, newvalue.toString());
           }
 
           options.verbose && console.log(`change-${name} OK`, endpoint);
@@ -141,6 +115,9 @@ module.exports = function(options, callback) {
           if (!options.dontBroadcastLocalUpdates) {
             socket.broadcast.emit(`change-${name}`, endpoint, newvalue);
           }
+
+          ee.emit('change', device, name, newvalue, 'websocket');
+          ee.emit('change-' + name, device, newvalue, 'websocket');
 
           callback && callback();
         }
@@ -160,7 +137,7 @@ module.exports = function(options, callback) {
       return callback('Connection to mbed Cloud failed ' + err);
     }
 
-    console.log('Retrieving initial device model...');
+    options.verbose && console.log('connected to mbed Cloud, retrieving initial device model');
 
     if (options.fakeData) {
       devices = options.fakeData;
@@ -171,14 +148,16 @@ module.exports = function(options, callback) {
     }
 
     if (devices.some(d => d.err)) {
-      console.log('Devices with errors:', devices.filter(d => d.err));
+      options.verbose && console.log('devices with errors:', devices.filter(d => d.err));
     }
 
     devices = devices.filter(d => !d.err);
 
-    console.log('Retrieved %d devices on startup', devices.length, devices);
-
     callback(null, devices, ee, api);
+
+    if (devices.some(d => d.err)) {
+      ee.emit('devices-with-errors', devices.filter(d => d.err));
+    }
   }));
 
   // Notifications
@@ -191,15 +170,19 @@ module.exports = function(options, callback) {
 
     options.verbose && console.log('notification', notification);
 
-    let prop = Object.keys(options.subscribe).filter(k => {
-      return options.subscribe[k] === notification.path;
+    let prop = Object.keys(subscribe).filter(k => {
+      return subscribe[k] === notification.path;
     })[0];
 
     // should not happen but hey
-    if (!prop) return console.error('Notification for non-mapped route...', notification);
+    if (!prop) {
+      ee.emit('notification-unmapped-route', notification.ep, notification.path);
+      return console.error('Notification for non-mapped route...', notification);
+    }
 
     // can intercept from your main app :-)
-    ee.emit('notification-' + prop, device, notification.payload);
+    ee.emit('change', device, prop, notification.payload, 'notification');
+    ee.emit('change-' + prop, device, notification.payload, 'notification');
 
     device[prop] = notification.payload;
     options.io.sockets.emit('change-' + prop, notification.ep, notification.payload);
@@ -210,7 +193,7 @@ module.exports = function(options, callback) {
   api.on('registration', co.wrap(function*(registration) {
     if (registration.ept !== options.endpointType) return;
 
-    console.log('new registration', registration, devices);
+    ee.emit('new-registration', registration);
 
     let device = devices.filter(d => d.endpoint === registration.ep)[0];
     if (device) {
@@ -221,9 +204,15 @@ module.exports = function(options, callback) {
 
     let data = yield getDeviceData(registration.ep);
 
+    if (data.err) {
+      ee.emit('create-device-error', registration.ep, data.err);
+      options.verbose && console.log('Loading device model for', registration.ep, 'failed', data.err);
+      return;
+    }
+
     devices.push(data);
 
-    console.log('new registration data', data);
+    ee.emit('created-device', data);
 
     options.io.sockets.emit('created-device', options.mapToView(data));
   }));
@@ -235,7 +224,8 @@ module.exports = function(options, callback) {
     }
     devices.splice(devices.indexOf(device), 1);
 
-    console.log('de-registered', registration);
+    ee.emit('removed-device', registration.ep);
+
     options.io.sockets.emit('removed-device', registration.ep);
   }
 
