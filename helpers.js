@@ -12,7 +12,7 @@ function KonekutaHelpers(connector, options) {
 
 KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resourceValues, timeout) {
   timeout = timeout || 10000;
-  
+
   let api = this.connector;
   let options = this.options;
 
@@ -27,7 +27,9 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
     co.wrap(function*() {
       // we need to run this in series...
       let ret = {
-        endpoint: endpoint
+        get endpoint() {
+          return endpoint;
+        }
       };
 
       // first subscribe

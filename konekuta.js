@@ -71,7 +71,12 @@ module.exports = function(options, callback) {
     return helpers.getResources(endpoint, s, retrieve, options.timeout).catch(err => {
       options.verbose && console.log('error when retrieving values for', endpoint, err);
       // don't throw, but rather capture the error...
-      return { endpoint: endpoint, err: err };
+      return {
+        get endpoint() {
+          return endpoint;
+        },
+        err: err
+      };
     });
   }
 
