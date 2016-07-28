@@ -88,7 +88,10 @@ konekuta(options, function(err, devices, ee, connector) {
         {
           endpoint: 'f745e447-b26e-43bc-b253-814401e844e3',
           buttonCount: 3,
-          deviceName: 'Light bulb 1'
+          deviceName: 'Light bulb 1',
+          updateName: function(newValue, callback) {
+            // automatically created for every update'able property
+          }
         },
         {
           endpoint: 'ef4ef820-9b3e-4f79-83a1-52aa1bd935fa',
@@ -222,4 +225,16 @@ socket.onevent = function(e) {
     var newValue = e.data[2];
   }
 };
+```
+
+### Updating values from the Client
+
+To update the value of a property from the client, call `emit` on the socket:
+
+```js
+// the event name is 'change-' + propertyName
+// arguments are endpoint, newValue, callback (optional)
+socket.emit('change-name', 'f745e447-b26e-43bc-b253-814401e844e3', 'This is the new name', function(err) {
+  // callback method, err is filled if something went wrong
+});
 ```
