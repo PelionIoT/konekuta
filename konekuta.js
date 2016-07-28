@@ -23,8 +23,6 @@ module.exports = function(options, callback) {
   assert.equal(typeof options.mapToView, 'function', 'Need to pass in options.mapToView');
   assert.equal(typeof callback, 'function', 'Need to pass in callback as second argument');
 
-  options.timeout = options.timeout || 10000;
-
   for (let prop of Object.keys(options.deviceModel)) {
     if (options.deviceModel[prop].subscribe === true) {
       options.deviceModel[prop].subscribe = options.deviceModel[prop].retrieve;
@@ -54,6 +52,8 @@ module.exports = function(options, callback) {
   let subscribe = getPropFromDeviceModel('subscribe');
   let retrieve = getPropFromDeviceModel('retrieve');
   let update = getPropFromDeviceModel('update');
+
+  options.timeout = options.timeout || (7000 + (Object.keys(subscribe).length * 3000));
 
   // This is the truth. This is where we keep state of all connected devices.
   var devices = [];
