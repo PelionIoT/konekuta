@@ -18,7 +18,9 @@ module.exports = function(options, callback) {
     return callback('Please set your access token first!');
   }
 
-  assert(options.io, 'Need to pass in socket.io instance under options.io');
+  if (options.io) {
+    assert.equal(typeof options.io, 'object', 'Need to pass in socket.io instance under options.io');
+  }
   assert(options.endpointType, 'Need to pass in options.endpointType');
   assert.equal(typeof options.mapToView, 'function', 'Need to pass in options.mapToView');
   assert.equal(typeof callback, 'function', 'Need to pass in callback as second argument');
@@ -64,6 +66,45 @@ module.exports = function(options, callback) {
 
   var helpers = new KonekutaHelpers(api, { verbose: options.verbose });
 
+  var updateValue = co.wrap(function*(endpoint, propertyName, newvalue, socket, callback) {
+    options.verbose && console.log('change-' + propertyName, endpoint, newvalue);
+    try {
+      var device = devices.filter(d => d.endpoint === endpoint)[0];
+      if (!device) throw 'Could not find device with endpoint ' + endpoint;
+
+      if (!options.dontUpdate) {
+        let method = update[propertyName].method === 'put' ?
+          'putResourceValue' :
+          'postResource';
+        yield promisify(api[method].bind(api))(endpoint, update[propertyName].path, newvalue.toString());
+      }
+
+      options.verbose && console.log(`change-${propertyName} OK`, endpoint);
+      device[propertyName] = newvalue;
+
+      // broadcast to other clients
+      if (!options.dontBroadcastLocalUpdates) {
+        if (socket) {
+          console.log('sending over normal socket');
+          socket.broadcast.emit(`change-${propertyName}`, endpoint, newvalue);
+        }
+        else if (options.io) {
+          console.log('broadcasting', propertyName);
+          options.io.sockets.emit(`change-${propertyName}`, endpoint, newvalue);
+        }
+      }
+
+      ee.emit('change', device, propertyName, newvalue, 'websocket');
+      ee.emit('change-' + propertyName, device, newvalue, 'websocket');
+
+      callback && callback();
+    }
+    catch (err) {
+      options.verbose && console.log(`change-${propertyName} failed`, endpoint, err);
+      callback && callback(err.toString());
+    }
+  });
+
   // Subscribe to resources and get initial values for a device
   function getDeviceData(endpoint) {
     let s = Object.keys(subscribe).map(k => subscribe[k]);
@@ -71,7 +112,24 @@ module.exports = function(options, callback) {
     return helpers.getResources(endpoint, s, retrieve, options.timeout).catch(err => {
       options.verbose && console.log('error when retrieving values for', endpoint, err);
       // don't throw, but rather capture the error...
-      return { endpoint: endpoint, err: err };
+      return {
+        get endpoint() {
+          return endpoint;
+        },
+        err: err
+      };
+    }).then(device => {
+      if (device.err) return device;
+
+      for (let key of Object.keys(update)) {
+        let capitalized = key.substr(0, 1).toUpperCase() + key.substr(1);
+        device['update' + capitalized] = function(newvalue, callback) {
+          updateValue(device.endpoint, key, newvalue, null, callback);
+        };
+      }
+      return device;
+    }).catch(err => {
+      console.error('oh noes', err);
     });
   }
 
@@ -90,7 +148,7 @@ module.exports = function(options, callback) {
   }
 
   // socket.io
-  options.io.on('connection', function(socket) {
+  options.io && options.io.on('connection', function(socket) {
     // sync all devices to the client to verify that he has latest version
     let sync = devices.map(d => {
       return { endpoint: d.endpoint, view: options.mapToView(d) };
@@ -98,39 +156,9 @@ module.exports = function(options, callback) {
     socket.emit('device-list', sync);
 
     for (let name of Object.keys(update)) {
-
-      socket.on('change-' + name, co.wrap(function*(endpoint, newvalue, callback) {
-        options.verbose && console.log('change-' + name, endpoint, newvalue);
-        try {
-          var device = devices.filter(d => d.endpoint === endpoint)[0];
-          if (!device) throw 'Could not find device with endpoint ' + endpoint;
-
-          if (!options.dontUpdate) {
-            let method = update[name].method === 'put' ?
-              'putResourceValue' :
-              'postResource';
-            yield promisify(api[method].bind(api))(endpoint, update[name].path, newvalue.toString());
-          }
-
-          options.verbose && console.log(`change-${name} OK`, endpoint);
-          device[name] = newvalue;
-
-          // broadcast to other clients
-          if (!options.dontBroadcastLocalUpdates) {
-            socket.broadcast.emit(`change-${name}`, endpoint, newvalue);
-          }
-
-          ee.emit('change', device, name, newvalue, 'websocket');
-          ee.emit('change-' + name, device, newvalue, 'websocket');
-
-          callback && callback();
-        }
-        catch (err) {
-          options.verbose && console.log(`change-${name} failed`, endpoint, err);
-          callback && callback(err.toString());
-        }
-      }));
-
+      socket.on('change-' + name, (endpoint, newvalue, callback) => {
+        updateValue(endpoint, name, newvalue, socket, callback);
+      });
     }
 
   });
@@ -166,6 +194,7 @@ module.exports = function(options, callback) {
 
   // Notifications
   api.on('notification', function(notification) {
+    console.log('notification', notification);
     let device = devices.filter(d => d.endpoint === notification.ep)[0];
     if (!device) {
       // console.error('Got notification for non-existing device...', notification);
@@ -189,7 +218,7 @@ module.exports = function(options, callback) {
     ee.emit('change-' + prop, device, notification.payload, 'notification');
 
     device[prop] = notification.payload;
-    options.io.sockets.emit('change-' + prop, notification.ep, notification.payload);
+    options.io && options.io.sockets.emit('change-' + prop, notification.ep, notification.payload);
 
     options.verbose && console.log('updated device', device);
   });
@@ -218,10 +247,12 @@ module.exports = function(options, callback) {
 
     ee.emit('created-device', data);
 
-    options.io.sockets.emit('created-device', options.mapToView(data));
+    options.io && options.io.sockets.emit('created-device', options.mapToView(data));
   }));
 
   function deregister(registration) {
+    registration = typeof registration === 'object' ? registration : { ep: registration };
+
     let device = devices.filter(d => d.endpoint === registration.ep)[0];
     if (!device) {
       return options.verbose && console.log('de-registration came in for non-tracked device...', registration);
@@ -230,7 +261,7 @@ module.exports = function(options, callback) {
 
     ee.emit('removed-device', registration.ep);
 
-    options.io.sockets.emit('removed-device', registration.ep);
+    options.io && options.io.sockets.emit('removed-device', registration.ep);
   }
 
   api.on('de-registration', deregister);
