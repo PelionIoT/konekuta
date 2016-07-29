@@ -194,6 +194,7 @@ module.exports = function(options, callback) {
 
   // Notifications
   api.on('notification', function(notification) {
+    console.log('notification', notification);
     let device = devices.filter(d => d.endpoint === notification.ep)[0];
     if (!device) {
       // console.error('Got notification for non-existing device...', notification);
@@ -250,6 +251,8 @@ module.exports = function(options, callback) {
   }));
 
   function deregister(registration) {
+    registration = typeof registration === 'object' ? registration : { ep: registration };
+
     let device = devices.filter(d => d.endpoint === registration.ep)[0];
     if (!device) {
       return options.verbose && console.log('de-registration came in for non-tracked device...', registration);
