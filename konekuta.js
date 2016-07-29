@@ -194,7 +194,6 @@ module.exports = function(options, callback) {
 
   // Notifications
   api.on('notification', function(notification) {
-    console.log('notification', notification);
     let device = devices.filter(d => d.endpoint === notification.ep)[0];
     if (!device) {
       // console.error('Got notification for non-existing device...', notification);
