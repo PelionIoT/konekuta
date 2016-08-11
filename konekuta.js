@@ -21,7 +21,12 @@ module.exports = function(options, callback) {
   if (options.io) {
     assert.equal(typeof options.io, 'object', 'Need to pass in socket.io instance under options.io');
   }
-  assert(options.endpointType, 'Need to pass in options.endpointType');
+  if (!options.ignoreEndpointType) {
+    assert(options.endpointType, 'Need to pass in options.endpointType');
+  }
+  else {
+    options.endpointType = null;
+  }
   assert.equal(typeof options.mapToView, 'function', 'Need to pass in options.mapToView');
   assert.equal(typeof callback, 'function', 'Need to pass in callback as second argument');
 
@@ -106,16 +111,15 @@ module.exports = function(options, callback) {
   });
 
   // Subscribe to resources and get initial values for a device
-  function getDeviceData(endpoint) {
+  function getDeviceData(endpoint, type) {
     let s = Object.keys(subscribe).map(k => subscribe[k]);
 
     return helpers.getResources(endpoint, s, retrieve, options.timeout).catch(err => {
       options.verbose && console.log('error when retrieving values for', endpoint, err);
       // don't throw, but rather capture the error...
       return {
-        get endpoint() {
-          return endpoint;
-        },
+        endpoint: endpoint,
+        endpointType: type,
         err: err
       };
     }).then(device => {
@@ -127,6 +131,9 @@ module.exports = function(options, callback) {
           updateValue(device.endpoint, key, newvalue, null, callback);
         };
       }
+
+      device.endpointType = type;
+
       return device;
     }).catch(err => {
       console.error('oh noes', err);
@@ -139,7 +146,7 @@ module.exports = function(options, callback) {
 
     options.verbose && console.log('got devices', devices);
 
-    let getDeviceDatas = devices.map(device => getDeviceData(device.endpoint));
+    let getDeviceDatas = devices.map(device => getDeviceData(device.endpoint, device.type));
 
     let data = yield Promise.all(getDeviceDatas);
 
@@ -185,6 +192,10 @@ module.exports = function(options, callback) {
 
     devices = devices.filter(d => !d.err);
 
+    if (options.subscribeToAllResources) {
+      yield helpers.subscribeToAllResources(devices.map(d => d.endpoint));
+    }
+
     callback(null, devices, ee, api);
 
     if (devices.some(d => d.err)) {
@@ -208,8 +219,11 @@ module.exports = function(options, callback) {
 
     // should not happen but hey
     if (!prop) {
-      ee.emit('notification-unmapped-route', notification.ep, notification.path);
-      return console.error('Notification for non-mapped route...', notification);
+      ee.emit('notification-unmapped-route', device, notification.path, notification.payload);
+      if (!options.subscribeToAllResources) {
+        console.error('Notification for non-mapped route...', notification);
+      }
+      return;
     }
 
     // can intercept from your main app :-)
@@ -223,7 +237,7 @@ module.exports = function(options, callback) {
   });
 
   api.on('registration', co.wrap(function*(registration) {
-    if (registration.ept !== options.endpointType) return;
+    if (!options.ignoreEndpointType && registration.ept !== options.endpointType) return;
 
     ee.emit('new-registration', registration);
 
@@ -234,7 +248,11 @@ module.exports = function(options, callback) {
       api.emit('de-registration', registration);
     }
 
-    let data = yield getDeviceData(registration.ep);
+    let data = yield getDeviceData(registration.ep, registration.ept);
+
+    if (options.subscribeToAllResources) {
+      yield helpers.subscribeToAllResources([ registration.ep ]);
+    }
 
     if (data.err) {
       ee.emit('create-device-error', registration.ep, data.err);

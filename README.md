@@ -87,6 +87,7 @@ konekuta(options, function(err, devices, ee, connector) {
       [
         {
           endpoint: 'f745e447-b26e-43bc-b253-814401e844e3',
+          endpointType: 'MyAwesomeLight',
           buttonCount: 3,
           deviceName: 'Light bulb 1',
           updateName: function(newValue, callback) {
@@ -95,6 +96,7 @@ konekuta(options, function(err, devices, ee, connector) {
         },
         {
           endpoint: 'ef4ef820-9b3e-4f79-83a1-52aa1bd935fa',
+          endpointType: 'MyAwesomeLight',
           buttonCount: 14,
           deviceName: 'Light bulb 2'
         }
@@ -129,6 +131,8 @@ There are some more optional options:
 | fakeData      | If you provide an array of devices here, the array will be used, and Connector will be bypassed. Useful for debugging if you don't want to fiddle with actual devices. (default: null) |
 | dontBroadcastLocalUpdates | Usually updates are sent to other connected clients. If you already have subscriptions in place for all resources, you can just let Connector handle these notifications. (default: false) |
 | timeout | Sometimes resource values cannot be gotten immediately (device is hanging), this is the timeout for getting resource values (default: 7000 ms. + 3000 ms. * number of resources to fetch) |
+| ignoreEndpointType | Retrieve all endpoints, regardless of endpoint. Do not combine this with deviceModel, or you'll see plenty of errors. |
+| subscribeToAllResources | Lists all resources that are observable, and subscribe to all of them, no need to manually build the device model. |
 
 ### Server-side events
 

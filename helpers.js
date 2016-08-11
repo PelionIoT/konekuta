@@ -27,9 +27,7 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
     co.wrap(function*() {
       // we need to run this in series...
       let ret = {
-        get endpoint() {
-          return endpoint;
-        }
+        endpoint: endpoint
       };
 
       // first subscribe
@@ -58,6 +56,7 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
 // promisified version of api.getEndpoints
 KonekutaHelpers.prototype.getEndpoints = function(type) {
   let api = this.connector;
+  let opts = type ? { parameters: { type: type } } : null;
 
   return new Promise((res, rej) => {
     api.getEndpoints((err, devices) => {
@@ -67,8 +66,53 @@ KonekutaHelpers.prototype.getEndpoints = function(type) {
         return d;
       });
       res(devices);
-    }, { parameters: { type: type } });
+    }, opts);
   });
 };
+
+KonekutaHelpers.prototype.putResourceSubscription = function(endpoint, r) {
+  let api = this.connector;
+  let verbose = this.options.verbose;
+
+  return new Promise((res, rej) => {
+    api.putResourceSubscription(endpoint, r, function(err) {
+      if (err) verbose && console.error('subscribe error', endpoint, r, err);
+      verbose && console.log('subscribed to', endpoint, r);
+      if (err) return rej(err);
+      setTimeout(() => {
+        res();
+      }, 1500);
+    });
+  });
+};
+
+KonekutaHelpers.prototype.subscribeToAllResources = co.wrap(function*(endpoints) {
+  let self = this;
+  let api = this.connector;
+  let verbose = this.options.verbose;
+
+  var allResources = yield Promise.all(endpoints.map(e => {
+    return promisify(api.getResources.bind(api))(e);
+  }));
+
+  allResources = allResources.map(r => r.filter(a => a.obs).map(a => a.uri));
+
+  yield Promise.all(allResources.map((resources, rix) => {
+    let endpoint = endpoints[rix];
+
+    return co.wrap(function*() {
+      try {
+        for (let r of resources) {
+          verbose && console.log('subscribing to', endpoint, r);
+          yield self.putResourceSubscription(endpoint, r);
+        }
+      }
+      catch (ex) {
+        verbose && console.error('Error...', ex.toString());
+      }
+    })();
+  }));
+
+});
 
 module.exports = KonekutaHelpers;
