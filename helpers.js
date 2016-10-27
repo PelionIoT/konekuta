@@ -55,6 +55,12 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
 
 // promisified version of api.getEndpoints
 KonekutaHelpers.prototype.getEndpoints = function(type) {
+  let typeRegex;
+  if (type instanceof RegExp) {
+    typeRegex = type;
+    type = null;
+  }
+  
   let api = this.connector;
   let opts = type ? { parameters: { type: type } } : null;
 
@@ -65,6 +71,17 @@ KonekutaHelpers.prototype.getEndpoints = function(type) {
         d.endpoint = d.name;
         return d;
       });
+      
+      console.log('types is', devices, typeRegex);
+      
+      if (typeRegex) {
+        devices = devices.filter(d => {
+          console.log(d.type, typeRegex.test(d.type));
+          
+          return typeRegex.test(d.type);
+        });
+      }
+      
       res(devices);
     }, opts);
   });
