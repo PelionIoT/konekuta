@@ -1,6 +1,6 @@
 {
   "name": "konekuta",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "A highly-opiniated framework to build interactive, multi-tenant applications on top of mbed Device Connector",
   "main": "konekuta.js",
   "scripts": {
@@ -23,6 +23,6 @@
   "dependencies": {
     "co": "^4.6.0",
     "es6-promisify": "^4.1.0",
-    "mbed-connector-api": "^2.0.0"
+    "mbed-connector-api": "^3.0.0"
   }
 }
