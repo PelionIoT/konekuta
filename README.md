@@ -1,6 +1,6 @@
 # Konekuta
 
-A highly-opiniated node.js framework to quickly build dynamic web-applications on top of mbed Device Connector.
+A highly-opiniated node.js framework to quickly build dynamic web-applications on top of mbed Cloud.
 
 The idea behind Konekuta is that for many applications you need to solve the same problems:
 
@@ -11,11 +11,11 @@ The idea behind Konekuta is that for many applications you need to solve the sam
 Konekuta handles this by:
 
 * Loading the total state of all your devices only once, on app startup.
-* Properly handling registrations / de-registrations and notifications from mbed Device Connector.
+* Properly handling registrations / de-registrations and notifications from mbed Cloud.
 * A persistent web socket that syncs state between all connected clients, which will also correct state whenever a client re-connects.
 * Standardized way of handling updates, including callbacks whenever updates fail, so you can show proper feedback to the user.
 
-The framework is not flexible. It makes a bunch of assumptions on your environment and usage which might not fit you. This is by design. If your usecase does not fit Konekuta, use the [mbed Connector node.js library](https://github.com/ARMmbed/mbed-connector-api-node) instead.
+The framework is not flexible. It makes a bunch of assumptions on your environment and usage which might not fit you. This is by design. If your usecase does not fit Konekuta, use the [mbed Cloud JavaScript SDK](https://github.com/ARMmbed/mbed-cloud-sdk-javascript) instead.
 
 Looking for an example app built on top of Konekuta? See [ARMmbed/connected-lights](https://github.com/ARMmbed/connected-lights/tree/master/webapp).
 
@@ -34,7 +34,7 @@ You'll also need a web server (like express) and probably a templating library  
 Next, you'll need to define a device model, which maps resources on the physical device to objects. There are three different classes of resources that you can define:
 
 * Retrievable resources - Will be fetched when a device comes online.
-* Subscribable resources - Will be subscribed to in mbed Device Connector, and thus can be updated from the device.
+* Subscribable resources - Will be subscribed to in mbed Cloud, and thus can be updated from the device.
 * Updatable resources - Can be updated from the web application.
 
 For instance, we have a device with these resources:
@@ -110,7 +110,7 @@ The options object looks like this:
 ```js
 {
   endpointType: 'MyAwesomeLight',
-  token: 'Access token for Connector',
+  token: 'Access token for mbed Cloud',
   io: io,           // socket.io instance
   deviceModel: {},  // see above
   mapToView: function(device) {
@@ -127,7 +127,7 @@ There are some more optional options:
 | Name          | Description |
 | ------------- |-------------|
 | verbose       | Verbose logging. (default: false) |
-| dontUpdate    | When you update a value from a client, do not actually update the value in Device Connector. Useful for debugging f.e. lights without constantly triggering the light. (default: false) |
+| dontUpdate    | When you update a value from a client, do not actually update the value in Cloud. Useful for debugging f.e. lights without constantly triggering the light. (default: false) |
 | fakeData      | If you provide an array of devices here, the array will be used, and Connector will be bypassed. Useful for debugging if you don't want to fiddle with actual devices. (default: null) |
 | dontBroadcastLocalUpdates | Usually updates are sent to other connected clients. If you already have subscriptions in place for all resources, you can just let Connector handle these notifications. (default: false) |
 | timeout | Sometimes resource values cannot be gotten immediately (device is hanging), this is the timeout for getting resource values (default: 7000 ms. + 3000 ms. * number of resources to fetch) |
