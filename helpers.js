@@ -1,7 +1,8 @@
 'use strict';
 
 var co = require('co');
-var promisify = require('es6-promisify');
+
+var CON_PREFIX = '\x1b[34m[Konekuta]\x1b[0m';
 
 function KonekutaHelpers(connector, options) {
   // options should contain { verbose }
@@ -30,20 +31,37 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
         endpoint: endpoint
       };
 
+      // first receive the device
+      let cloudDevice = yield api.getDevice({ id: endpoint });
+
+      for (let prop of Object.keys(cloudDevice)) {
+        if (prop === '_api') continue;
+        if (cloudDevice[prop]) {
+          ret[prop] = cloudDevice[prop];
+        }
+      }
+      options.verbose && console.log(CON_PREFIX, 'retrieved full device model', endpoint);
+
       // first subscribe
       for (let path of subscriptions) {
         if (cancel) return;
 
-        yield promisify(api.putResourceSubscription.bind(api))(endpoint, path);
-        options.verbose && console.log('subscribed to', endpoint, path);
+        yield api.addResourceSubscription({
+          id: endpoint,
+          path: path
+        });
+        options.verbose && console.log(CON_PREFIX, 'subscribed to', endpoint, path);
       }
 
       // then fix resources
       for (let key of Object.keys(resourceValues)) {
         if (cancel) return;
 
-        ret[key] = yield promisify(api.getResourceValue.bind(api))(endpoint, resourceValues[key]);
-        options.verbose && console.log('got value', endpoint, key, resourceValues[key], '=', ret[key]);
+        ret[key] = yield api.getResourceValue({
+          id: endpoint,
+          path: resourceValues[key]
+        });
+        options.verbose && console.log(CON_PREFIX, 'got value', endpoint, key, resourceValues[key], '=', ret[key]);
       }
 
       clearTimeout(to);
@@ -60,30 +78,28 @@ KonekutaHelpers.prototype.getEndpoints = function(type) {
     typeRegex = type;
     type = null;
   }
-  
+
   let api = this.connector;
-  let opts = type ? { parameters: { type: type } } : null;
+  let opts = type ? { type: type } : null;
 
   return new Promise((res, rej) => {
-    api.getEndpoints((err, devices) => {
+    api.listConnectedDevices(opts, (err, devices) => {
       if (err) return rej(err);
-      devices = devices.map(d => {
-        d.endpoint = d.name;
+      devices = devices.data.map(d => {
+        d.endpoint = d.id;
         return d;
       });
-      
-      console.log('types is', devices, typeRegex);
-      
+
       if (typeRegex) {
         devices = devices.filter(d => {
-          console.log(d.type, typeRegex.test(d.type));
-          
+          console.log(CON_PREFIX, d.type, typeRegex.test(d.type));
+
           return typeRegex.test(d.type);
         });
       }
-      
+
       res(devices);
-    }, opts);
+    });
   });
 };
 
@@ -93,8 +109,8 @@ KonekutaHelpers.prototype.putResourceSubscription = function(endpoint, r) {
 
   return new Promise((res, rej) => {
     api.putResourceSubscription(endpoint, r, function(err) {
-      if (err) verbose && console.error('subscribe error', endpoint, r, err);
-      verbose && console.log('subscribed to', endpoint, r);
+      if (err) verbose && console.error(CON_PREFIX, 'subscribe error', endpoint, r, err);
+      verbose && console.log(CON_PREFIX, 'subscribed to', endpoint, r);
       if (err) return rej(err);
       setTimeout(() => {
         res();
@@ -109,7 +125,7 @@ KonekutaHelpers.prototype.subscribeToAllResources = co.wrap(function*(endpoints)
   let verbose = this.options.verbose;
 
   var allResources = yield Promise.all(endpoints.map(e => {
-    return promisify(api.getResources.bind(api))(e);
+    return api.listDeviceResources({ id: e });
   }));
 
   allResources = allResources.map(r => r.filter(a => a.obs).map(a => a.uri));
@@ -120,12 +136,12 @@ KonekutaHelpers.prototype.subscribeToAllResources = co.wrap(function*(endpoints)
     return co.wrap(function*() {
       try {
         for (let r of resources) {
-          verbose && console.log('subscribing to', endpoint, r);
+          verbose && console.log(CON_PREFIX, 'subscribing to', endpoint, r);
           yield self.putResourceSubscription(endpoint, r);
         }
       }
       catch (ex) {
-        verbose && console.error('Error...', ex.toString());
+        verbose && console.error(CON_PREFIX, 'error subscribing to...', endpoint, ex.toString());
       }
     })();
   }));
