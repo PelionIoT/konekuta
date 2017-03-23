@@ -295,8 +295,6 @@ module.exports = function(options, callback) {
   }));
 
   function deregister(registration) {
-    console.log('deregister', registration);
-
     registration = typeof registration === 'object' ? registration : { id: registration };
 
     let device = devices.filter(d => d.endpoint === registration.id)[0];
