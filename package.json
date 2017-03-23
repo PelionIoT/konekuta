@@ -22,6 +22,6 @@
   "homepage": "https://github.com/ARMmbed/konekuta#readme",
   "dependencies": {
     "co": "^4.6.0",
-    "mbed-cloud-sdk": "github:armmbed/mbed-cloud-sdk-javascript"
+    "mbed-cloud-sdk": "github:janjongboom/mbed-cloud-sdk-javascript#jan"
   }
 }
