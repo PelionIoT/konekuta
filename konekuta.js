@@ -1,6 +1,6 @@
 'use strict';
 
-var mbed = require('mbed-cloud-sdk');
+var mbed = require('./mbed-cloud-sdk');
 var co = require('co');
 var assert = require('assert');
 var EventEmitter = require('events');
@@ -66,11 +66,17 @@ module.exports = function(options, callback) {
   // This is the truth. This is where we keep state of all connected devices.
   var devices = [];
 
-  var api = new mbed.DevicesApi({
-    apiKey: options.token
+  var api = new mbed.ConnectApi({
+    apiKey: options.token,
+    host: options.host
   });
 
-  var helpers = new KonekutaHelpers(api, { verbose: options.verbose });
+  var deviceApi = new mbed.DeviceDirectoryApi({
+    apiKey: options.token,
+    host: options.host
+  });
+
+  var helpers = new KonekutaHelpers(api, deviceApi, { verbose: options.verbose });
 
   var updateValue = co.wrap(function*(endpoint, propertyName, newvalue, socket, callback) {
     options.verbose && console.log(CON_PREFIX, 'change-' + propertyName, endpoint, newvalue);
@@ -82,11 +88,7 @@ module.exports = function(options, callback) {
         let method = update[propertyName].method === 'put' ?
           'setResourceValue' :
           'executeResource';
-        yield api[method]({
-          id: endpoint,
-          path: update[propertyName].path,
-          value: newvalue.toString()
-        });
+        yield api[method](endpoint, update[propertyName].path, newvalue.toString());
       }
 
       options.verbose && console.log(CON_PREFIX, `change-${propertyName} OK`, endpoint);

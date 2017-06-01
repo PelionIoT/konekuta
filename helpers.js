@@ -4,10 +4,11 @@ var co = require('co');
 
 var CON_PREFIX = '\x1b[34m[Konekuta]\x1b[0m';
 
-function KonekutaHelpers(connector, options) {
+function KonekutaHelpers(connector, deviceApi, options) {
   // options should contain { verbose }
 
   this.connector = connector;
+  this.deviceApi = deviceApi;
   this.options = options;
 }
 
@@ -15,6 +16,7 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
   timeout = timeout || 10000;
 
   let api = this.connector;
+  let deviceApi = this.deviceApi;
   let options = this.options;
 
   return new Promise((res, rej) => {
@@ -32,7 +34,7 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
       };
 
       // first receive the device
-      let cloudDevice = yield api.getDevice({ id: endpoint });
+      let cloudDevice = yield deviceApi.getDevice(endpoint);
 
       for (let prop of Object.keys(cloudDevice)) {
         if (prop === '_api') continue;
@@ -46,10 +48,7 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
       for (let path of subscriptions) {
         if (cancel) return;
 
-        yield api.addResourceSubscription({
-          id: endpoint,
-          path: path
-        });
+        yield api.addResourceSubscription(endpoint, path);
         options.verbose && console.log(CON_PREFIX, 'subscribed to', endpoint, path);
       }
 
@@ -57,10 +56,7 @@ KonekutaHelpers.prototype.getResources = function(endpoint, subscriptions, resou
       for (let key of Object.keys(resourceValues)) {
         if (cancel) return;
 
-        ret[key] = yield api.getResourceValue({
-          id: endpoint,
-          path: resourceValues[key]
-        });
+        ret[key] = yield api.getResourceValue(endpoint, resourceValues[key]);
         options.verbose && console.log(CON_PREFIX, 'got value', endpoint, key, resourceValues[key], '=', ret[key]);
       }
 
@@ -80,12 +76,12 @@ KonekutaHelpers.prototype.getEndpoints = function(type) {
   }
 
   let api = this.connector;
-  let opts = type ? { type: type } : null;
 
   return new Promise((res, rej) => {
-    api.listConnectedDevices(opts, (err, devices) => {
+    api.listConnectedDevices(type, (err, devices) => {
       if (err) return rej(err);
-      devices = devices.data.map(d => {
+
+      devices = devices.map(d => {
         d.endpoint = d.id;
         return d;
       });
