@@ -1,6 +1,6 @@
 'use strict';
 
-var mbed = require('./mbed-cloud-sdk');
+var mbed = require('mbed-cloud-sdk');
 var co = require('co');
 var assert = require('assert');
 var EventEmitter = require('events');
@@ -188,12 +188,12 @@ module.exports = function(options, callback) {
   // Start notification channel
   api.startNotifications(co.wrap(function*(err) {
     if (err) {
-      return callback('Connection to mbed Cloud failed ' + err);
+      return callback('Connection to Mbed Cloud failed ' + err);
     }
 
     try {
 
-      options.verbose && console.log(CON_PREFIX, 'connected to mbed Cloud, retrieving initial device model');
+      options.verbose && console.log(CON_PREFIX, 'connected to Mbed Cloud, retrieving initial device model');
 
       if (options.fakeData) {
         devices = options.fakeData;

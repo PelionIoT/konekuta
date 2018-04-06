@@ -1,6 +1,6 @@
 {
   "name": "konekuta-cloud",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "A highly-opiniated framework to build interactive, multi-tenant applications on top of mbed Cloud",
   "main": "konekuta.js",
   "scripts": {
@@ -22,6 +22,7 @@
   "homepage": "https://github.com/ARMmbed/konekuta#readme",
   "dependencies": {
     "co": "^4.6.0",
+    "mbed-cloud-sdk": "^1.2.7",
     "superagent": "^3.4.1"
   }
 }
