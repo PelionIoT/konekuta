@@ -78,8 +78,11 @@ KonekutaHelpers.prototype.getEndpoints = function(type) {
   let api = this.connector;
 
   return new Promise((res, rej) => {
-    api.listConnectedDevices(type, (err, devices) => {
+    let filter = { deviceType: { $eq: 'light-system' } };
+    api.listConnectedDevices({ filter: filter }, (err, resp) => {
       if (err) return rej(err);
+
+      let devices = resp.data;
 
       devices = devices.map(d => {
         d.endpoint = d.id;
