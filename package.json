@@ -1,7 +1,7 @@
 {
-  "name": "konekuta",
-  "version": "0.3.4",
-  "description": "A highly-opiniated framework to build interactive, multi-tenant applications on top of mbed Device Connector",
+  "name": "konekuta-cloud",
+  "version": "1.2.1",
+  "description": "A highly-opiniated framework to build interactive, multi-tenant applications on top of mbed Cloud",
   "main": "konekuta.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -22,7 +22,6 @@
   "homepage": "https://github.com/ARMmbed/konekuta#readme",
   "dependencies": {
     "co": "^4.6.0",
-    "es6-promisify": "^4.1.0",
-    "mbed-connector-api": "^3.0.0"
+    "superagent": "^3.4.1"
   }
 }

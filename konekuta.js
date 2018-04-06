@@ -1,11 +1,12 @@
 'use strict';
 
-var CloudApi = require('mbed-connector-api');
-var promisify = require('es6-promisify');
+var mbed = require('./mbed-cloud-sdk');
 var co = require('co');
 var assert = require('assert');
 var EventEmitter = require('events');
 var KonekutaHelpers = require('./helpers');
+
+var CON_PREFIX = '\x1b[34m[Konekuta]\x1b[0m';
 
 module.exports = function(options, callback) {
 
@@ -65,36 +66,42 @@ module.exports = function(options, callback) {
   // This is the truth. This is where we keep state of all connected devices.
   var devices = [];
 
-  var api = new CloudApi({
-    accessKey: options.token
+  var api = new mbed.ConnectApi({
+    apiKey: options.token,
+    host: options.host
   });
 
-  var helpers = new KonekutaHelpers(api, { verbose: options.verbose });
+  var deviceApi = new mbed.DeviceDirectoryApi({
+    apiKey: options.token,
+    host: options.host
+  });
+
+  var helpers = new KonekutaHelpers(api, deviceApi, { verbose: options.verbose });
 
   var updateValue = co.wrap(function*(endpoint, propertyName, newvalue, socket, callback) {
-    options.verbose && console.log('change-' + propertyName, endpoint, newvalue);
+    options.verbose && console.log(CON_PREFIX, 'change-' + propertyName, endpoint, newvalue);
     try {
       var device = devices.filter(d => d.endpoint === endpoint)[0];
       if (!device) throw 'Could not find device with endpoint ' + endpoint;
 
       if (!options.dontUpdate) {
         let method = update[propertyName].method === 'put' ?
-          'putResourceValue' :
-          'postResource';
-        yield promisify(api[method].bind(api))(endpoint, update[propertyName].path, newvalue.toString());
+          'setResourceValue' :
+          'executeResource';
+        yield api[method](endpoint, update[propertyName].path, newvalue.toString());
       }
 
-      options.verbose && console.log(`change-${propertyName} OK`, endpoint);
+      options.verbose && console.log(CON_PREFIX, `change-${propertyName} OK`, endpoint);
       device[propertyName] = newvalue;
 
       // broadcast to other clients
       if (!options.dontBroadcastLocalUpdates) {
         if (socket) {
-          console.log('sending over normal socket');
+          console.log(CON_PREFIX, 'sending over normal socket');
           socket.broadcast.emit(`change-${propertyName}`, endpoint, newvalue);
         }
         else if (options.io) {
-          console.log('broadcasting', propertyName);
+          console.log(CON_PREFIX, 'broadcasting', propertyName);
           options.io.sockets.emit(`change-${propertyName}`, endpoint, newvalue);
         }
       }
@@ -105,7 +112,7 @@ module.exports = function(options, callback) {
       callback && callback();
     }
     catch (err) {
-      options.verbose && console.log(`change-${propertyName} failed`, endpoint, err);
+      options.verbose && console.log(CON_PREFIX, `change-${propertyName} failed`, endpoint, err);
       callback && callback(err.toString());
     }
   });
@@ -115,7 +122,7 @@ module.exports = function(options, callback) {
     let s = Object.keys(subscribe).map(k => subscribe[k]);
 
     return helpers.getResources(endpoint, s, retrieve, options.timeout).catch(err => {
-      options.verbose && console.log('error when retrieving values for', endpoint, err);
+      options.verbose && console.log(CON_PREFIX, 'error when retrieving values for', endpoint, err);
       // don't throw, but rather capture the error...
       return {
         endpoint: endpoint,
@@ -136,7 +143,7 @@ module.exports = function(options, callback) {
 
       return device;
     }).catch(err => {
-      console.error('oh noes', err);
+      console.error(CON_PREFIX, 'getDeviceData failed', err);
     });
   }
 
@@ -144,7 +151,15 @@ module.exports = function(options, callback) {
   function* getDevices() {
     let devices = yield helpers.getEndpoints(options.endpointType);
 
-    options.verbose && console.log('got devices', devices);
+    if (options.verbose) {
+      let toprint = devices.map(device => {
+        return Object.keys(device).reduce((curr, k) => {
+          if (k !== '_api' && typeof device[k] !== 'undefined') curr[k] = device[k];
+          return curr;
+        }, {});
+      });
+      console.log(CON_PREFIX, 'got devices', toprint);
+    }
 
     let getDeviceDatas = devices.map(device => getDeviceData(device.endpoint, device.type));
 
@@ -171,47 +186,54 @@ module.exports = function(options, callback) {
   });
 
   // Start notification channel
-  api.startLongPolling(co.wrap(function*(err) {
+  api.startNotifications(co.wrap(function*(err) {
     if (err) {
       return callback('Connection to mbed Cloud failed ' + err);
     }
 
-    options.verbose && console.log('connected to mbed Cloud, retrieving initial device model');
+    try {
 
-    if (options.fakeData) {
-      devices = options.fakeData;
+      options.verbose && console.log(CON_PREFIX, 'connected to mbed Cloud, retrieving initial device model');
+
+      if (options.fakeData) {
+        devices = options.fakeData;
+      }
+      else {
+        // get all current devices, subscribe to their resources, and retrieve initial values
+        devices = yield getDevices();
+      }
+
+      if (devices.some(d => d.err)) {
+        options.verbose && console.log(CON_PREFIX, 'devices with errors:', devices.filter(d => d.err));
+      }
+
+      devices = devices.filter(d => !d.err);
+
+      if (options.subscribeToAllResources) {
+        yield helpers.subscribeToAllResources(devices.map(d => d.endpoint));
+      }
+
+      callback(null, devices, ee, api);
+
+      if (devices.some(d => d.err)) {
+        ee.emit('devices-with-errors', devices.filter(d => d.err));
+      }
+
     }
-    else {
-      // get all current devices, subscribe to their resources, and retrieve initial values
-      devices = yield getDevices();
-    }
-
-    if (devices.some(d => d.err)) {
-      options.verbose && console.log('devices with errors:', devices.filter(d => d.err));
-    }
-
-    devices = devices.filter(d => !d.err);
-
-    if (options.subscribeToAllResources) {
-      yield helpers.subscribeToAllResources(devices.map(d => d.endpoint));
-    }
-
-    callback(null, devices, ee, api);
-
-    if (devices.some(d => d.err)) {
-      ee.emit('devices-with-errors', devices.filter(d => d.err));
+    catch (ex) {
+      return callback('Loading initial device model failed ' + ex);
     }
   }));
 
   // Notifications
   api.on('notification', function(notification) {
-    let device = devices.filter(d => d.endpoint === notification.ep)[0];
+    let device = devices.filter(d => d.endpoint === notification.id)[0];
     if (!device) {
       // console.error('Got notification for non-existing device...', notification);
       return;
     }
 
-    options.verbose && console.log('notification', notification);
+    options.verbose && console.log(CON_PREFIX, 'notification', notification);
 
     let prop = Object.keys(subscribe).filter(k => {
       return subscribe[k] === notification.path;
@@ -221,7 +243,7 @@ module.exports = function(options, callback) {
     if (!prop) {
       ee.emit('notification-unmapped-route', device, notification.path, notification.payload);
       if (!options.subscribeToAllResources) {
-        console.error('Notification for non-mapped route...', notification);
+        console.error(CON_PREFIX, 'notification for non-mapped route...', notification);
       }
       return;
     }
@@ -231,32 +253,39 @@ module.exports = function(options, callback) {
     ee.emit('change-' + prop, device, notification.payload, 'notification');
 
     device[prop] = notification.payload;
-    options.io && options.io.sockets.emit('change-' + prop, notification.ep, notification.payload);
+    options.io && options.io.sockets.emit('change-' + prop, notification.id, notification.payload);
 
-    options.verbose && console.log('updated device', device);
+    if (options.verbose) {
+      var toprint = Object.keys(device).reduce((curr, k) => {
+        if (typeof device[k] !== 'function') curr[k] = device[k];
+        return curr;
+      }, {});
+
+      console.log(CON_PREFIX, 'updated device', toprint);
+    }
   });
 
   api.on('registration', co.wrap(function*(registration) {
-    if (!options.ignoreEndpointType && registration.ept !== options.endpointType) return;
+    if (!options.ignoreEndpointType && registration.type !== options.endpointType) return;
 
     ee.emit('new-registration', registration);
 
-    let device = devices.filter(d => d.endpoint === registration.ep)[0];
+    let device = devices.filter(d => d.endpoint === registration.id)[0];
     if (device) {
-      console.warn('Registration came in for device that already existed...');
+      console.warn(CON_PREFIX, 'registration came in for device that already existed...');
       // so do de-register now, and then register again...
       api.emit('de-registration', registration);
     }
 
-    let data = yield getDeviceData(registration.ep, registration.ept);
+    let data = yield getDeviceData(registration.id, registration.type);
 
     if (options.subscribeToAllResources) {
-      yield helpers.subscribeToAllResources([ registration.ep ]);
+      yield helpers.subscribeToAllResources([ registration.id ]);
     }
 
     if (data.err) {
-      ee.emit('create-device-error', registration.ep, data.err);
-      options.verbose && console.log('Loading device model for', registration.ep, 'failed', data.err);
+      ee.emit('create-device-error', registration.id, data.err);
+      options.verbose && console.log(CON_PREFIX, 'loading device model for', registration.id, 'failed', data.err);
       return;
     }
 
@@ -268,21 +297,21 @@ module.exports = function(options, callback) {
   }));
 
   function deregister(registration) {
-    registration = typeof registration === 'object' ? registration : { ep: registration };
+    registration = typeof registration === 'object' ? registration : { id: registration };
 
-    let device = devices.filter(d => d.endpoint === registration.ep)[0];
+    let device = devices.filter(d => d.endpoint === registration.id)[0];
     if (!device) {
-      return options.verbose && console.log('de-registration came in for non-tracked device...', registration);
+      return options.verbose && console.log(CON_PREFIX, 'de-registration came in for non-tracked device...', registration);
     }
     devices.splice(devices.indexOf(device), 1);
 
-    ee.emit('removed-device', registration.ep);
+    ee.emit('removed-device', registration.id);
 
-    options.io && options.io.sockets.emit('removed-device', registration.ep);
+    options.io && options.io.sockets.emit('removed-device', registration.id);
   }
 
-  api.on('de-registration', deregister);
+  api.on('deregistration', deregister);
 
-  api.on('registration-expired', deregister);
+  api.on('expired', deregister);
 
 };
